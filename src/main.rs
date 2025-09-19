@@ -1,13 +1,13 @@
 use std::{ffi::c_void, mem::transmute};
-
+use windows::core::{w, s};
 use windows::{Win32::{Security::Cryptography::{UI::{CERT_SELECT_STRUCT_W, self, CSS_ENABLETEMPLATE},
                 CERT_STORE_PROV_SYSTEM_W, CERT_SYSTEM_STORE_LOCATION_SHIFT, CERT_SYSTEM_STORE_CURRENT_USER_ID,
                 CERT_QUERY_ENCODING_TYPE, HCRYPTPROV_LEGACY, CERT_OPEN_STORE_FLAGS, CertOpenStore, CERT_CONTEXT, CertFreeCertificateContext, CertCloseStore, CERT_CLOSE_STORE_CHECK_FLAG},
-                System::LibraryLoader::{LoadLibraryW, GetProcAddress}}, w, s
+                System::LibraryLoader::{LoadLibraryW, GetProcAddress}}
             };
 
 
-type CertSelectCertificateW = extern "stdcall" fn(*const CERT_SELECT_STRUCT_W);
+type CertSelectCertificateW = extern "system" fn(*const CERT_SELECT_STRUCT_W);
 fn main() -> ::windows::core::Result<()> {
     unsafe {
 
@@ -17,21 +17,20 @@ fn main() -> ::windows::core::Result<()> {
         let mut personal_store = CertOpenStore(
             CERT_STORE_PROV_SYSTEM_W,
             CERT_QUERY_ENCODING_TYPE::default(),
-            HCRYPTPROV_LEGACY::default(),
+            Some(HCRYPTPROV_LEGACY::default()),
             CERT_OPEN_STORE_FLAGS(CERT_SYSTEM_STORE_CURRENT_USER_ID << CERT_SYSTEM_STORE_LOCATION_SHIFT),
             Some(store_name))?;
         
         let cert_select_struct = CERT_SELECT_STRUCT_W {
                 dwSize: std::mem::size_of::<CERT_SELECT_STRUCT_W>() as u32,
                 hwndParent: ::core::mem::zeroed(),
-                hInstance: crypt_ui_instance,
+                hInstance: crypt_ui_instance.into(),
                 pTemplateName: w!(""),
                 dwFlags: CSS_ENABLETEMPLATE,
                 szTitle: w!("Certificate to sign .exe"),
                 cCertStore: 1,
                 arrayCertStore: &mut personal_store,
-                // code signing 
-                szPurposeOid: s!("1.3.6.1.5.5.7.3.3"),
+                szPurposeOid: s!("1.3.6.1.5.5.7.3.3"), // code signing OID
                 cCertContext: 0,
                 arrayCertContext: &mut fresh_cert,
                 lCustData: windows::Win32::Foundation::LPARAM(0),
@@ -81,7 +80,7 @@ fn main() -> ::windows::core::Result<()> {
         if !CertFreeCertificateContext(Some(fresh_cert)).as_bool() {
             println!("Couldn't close the cert context.");
         }
-        if !CertCloseStore(personal_store, CERT_CLOSE_STORE_CHECK_FLAG).as_bool() {
+        if !CertCloseStore(Some(personal_store), CERT_CLOSE_STORE_CHECK_FLAG).is_ok() {
             println!("Couldn't close the store.");
         }
 
